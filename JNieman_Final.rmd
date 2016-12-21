@@ -1,0 +1,648 @@
+---
+title: "JNieman_Final"
+author: "Jeff Nieman"
+date: "December 8, 2016"
+output: html_document
+---
+This is the final project for Computation Mathematics - Data 605
+
+The source of the data is from the Kaggle contest around the Ames homes data, and the goals of the project are to understand the data and build a model to predict the sales price.  I will start by uploading the training data (then at the end run against the test data).
+```{r, message=F}
+ames <- read.csv("C:/Users/jenieman/Documents/CUNY/Data 605/Final/train.csv", stringsAsFactors = F)
+```
+
+###*Accessing the data and selecting the variables*
+I will begin by picking one of the quantitative independent variables that are skewed to the right to do some statistical analysis and to compare against the variable to be predicted.  I will choose the total basement square foot as X.  The dependent variable (Y) will be the sales price.
+
+```{r}
+par(mfrow=c(1,2))
+hist(ames$TotalBsmtSF, col='yellow', main="Distribution of Total Basement Size")
+plot(ames$SalePrice~ames$TotalBsmtSF, main = "Plot of Sale Price vs. Total Basement Size")
+```
+
+###*Probability*
+
+In this phase I will compare my X variable (basement size) and its 3rd quartile with my 2nd quartile or median of the Y variable (Sales price).  This will allow me to look at some probabilites to understand whether or not they are truly independent.
+
+```{r}
+X <- ames$TotalBsmtSF
+q<- quantile(X)
+x <- q[4]
+Y <- ames$SalePrice
+y <- median(Y)
+
+A <- subset(ames, SalePrice>y & TotalBsmtSF>x)
+a <- subset(ames, SalePrice>y)
+P_A <- length(A$BsmtCond)/length(a$BsmtCond)
+print(c("P(X>x|Y>y):",P_A))
+
+P_B <- length(A$BsmtCond)/length(ames$BsmtCond)
+print(c("P(X>x,Y>y):",P_B))
+
+C <- subset(ames, SalePrice>y & TotalBsmtSF<x)
+P_C <- length(C$BsmtCond)/length(a$BsmtCond)
+print(c("P(X<x|Y>y):",P_C))
+
+#determine values needed for chart:
+Quad1.1 <- subset(ames, SalePrice<=y & TotalBsmtSF<=x)
+length(Quad1.1$BsmtCond)
+Quad1.2 <- subset(ames, SalePrice>y & TotalBsmtSF<=x)
+length(Quad1.2$BsmtCond) 
+Quad2.1 <- subset(ames, SalePrice<=y & TotalBsmtSF>x)
+length(Quad2.1$BsmtCond)
+Quad2.2 <- subset(ames, SalePrice>y & TotalBsmtSF>x)
+length(Quad2.2$BsmtCond) 
+
+```
+
+|   x/y            | <=2nd Quartile | >2nd Quartile |   Total      |
+|------------------|----------------|---------------|--------------|
+| <=3rd Quartile   |        696     |       399     |    1095      |
+| >3rd Quartile    |         36     |       329     |     365      |
+| Total            |        732     |       728     |    1460      |
+
+Splitting them out according to the chart does not make them independent.  The chart clearly shows the dependency. Otherwise the distribution of the X variable should be about the same for both above and below the median for Y.
+
+As calculated beforehand P(A|B) = 0.4519231 or 329/728. P(A) = 0.2253425 or 329/1460.  P(B) = 0.4986301 or 728/1460.  Multiplying them together shows that P(A)P(B) = 0.1123625 which is not the same as P(A|B).  This shows again that these two variables are not independent.
+
+In order to confirm this I will perform a Chi Squared Test:
+
+```{r}
+D <- cbind(X,Y)
+chisq.test(D)
+```
+
+With a Chi-squared value of 217360 and a df of 1450 this gives us a very low p-value of nearly 0.  This means that there is virtually no change of the null hypothesis being correct and there is dependency between the values of basement square feet and sales price.
+
+###*Descriptive and Inferential Statistics*
+
+I will begin this section by looking at the univariate descriptive statistics.  As shown below there are 1460 instances and a mix of character and numerical values.  Where the n is less than 1460 there is a need to transform some NA's in the data which I will do later in the analysis.
+
+```{r, warning = F, message=F}
+require(psych)
+describe(ames)
+```
+
+I will also provide some box plots and histograms for those variables that are numerical and are meaningful.
+
+```{r, warning=F, message=F}
+par(mfrow=c(1,2))
+hist(ames$LotFrontage, col='yellow', main="Distribution of Lot Frontage")
+boxplot(ames$LotFrontage, col='blue',main="Lot Frontage")
+
+hist(ames$LotArea, breaks = 50, col='yellow', main="Distribution of Lot Area")
+boxplot(ames$LotArea, col='blue',main="Lot Area")
+
+hist(ames$TotalBsmtSF, col='yellow', main="Distribution of Total Basement Square Feet")
+boxplot(ames$TotalBsmtSF, col='blue',main="Basement Square Feet")
+
+hist(ames$TotRmsAbvGrd, col='yellow', main="Distribution of Rooms")
+boxplot(ames$TotRmsAbvGrd, col='blue',main="Rooms")
+
+hist(ames$GrLivArea, col='yellow', main="Distribution of Living Area")
+boxplot(ames$GrLivArea, col='blue',main="Living Area")
+
+hist(ames$SalePrice, col='yellow', main="Distribution of Sale Price")
+boxplot(ames$SalePrice, col='blue',main="Sale Price")
+```
+
+Looking at the two chosen variables (basement square feet and sales price), I will create some scatter plots to see relationship.
+
+```{r, warning=F, message=F}
+plot(Y~X, main="Relationship between Size of Basement and Sales Price", xlab = "Basement Size in Sq. Ft.", ylab = "Sales Price in $")
+smoothScatter(X,Y, bandwidth = 6, main="Relationship between Size of Basement and Sales Price", xlab = "Basement Size in Sq. Ft.", ylab = "Sales Price in $", nbin = 500)
+```
+
+Testing the confidence interval for the relationship between the two variables for CI=95%.  As shown the true difference in means is not equal to 0 therefore the alternative hypothesis must be accepted, that the two variables are dependent.
+
+```{r, warning=F, message=F}
+t.test(Y, X)
+```
+
+To explore this further I created a correlation matrix.  As the matrix below shows there is a correlation of 61.36%.
+
+```{r}
+Corr <- cor(D)
+Corr
+```
+
+To finalize the conclusion of the relationship between the two variables I tested for a correlation of 0, this time with a much higher confidence interval of 99%.  Once again the alternative hypothesis must be accepted, that the two variables have a correlation.
+
+```{r, warning=F, message=F}
+
+t.test(Y,X, conf.level = 0.99)
+
+```
+
+All of these tests show that statistically there is a relationship between the two variables.  the size of the basement does impact the selling price.
+
+###*Linear Algebra and Correlation*
+
+I will begin this section by inverting the correlation matrix and creating a precision matrix.
+
+```{r}
+Prec <- solve(Corr)
+Prec
+
+```
+
+I will then multiply the precision matrix by the correlation matrix and vice versa.  Both produce an identity matrix.
+
+```{r}
+Prec%*%Corr
+Corr%*%Prec
+```
+
+Due to the large number of predictors I will performprinciple component analysis (PCA) on the data set.  This will help later on in the building of a linear regression model.  In order to effectively do this I will begin by fixing the data issues, then create dummy values for all categorical variables, followed by scaling and then completing the PCA.
+
+*Fixing Data Issues*
+
+```{r}
+#take out index and sale price (the variable we are predicting)
+ames1 <- ames[,-c(1,81)]
+
+#fix data by imputing median for NA for lot frontage
+ames1$LotFrontage[is.na(ames1$LotFrontage)] <- median(ames1$LotFrontage, na.rm=T)
+
+#impute 'None' for NA in Alley
+ames1$Alley[is.na(ames1$Alley)] <- 'None'
+
+#impute 'None' for NA for MasVnrType
+ames1$MasVnrType[is.na(ames1$MasVnrType)] <- 'None'
+
+#impute 0 for NA for MasVnrArea
+ames1$MasVnrArea[is.na(ames1$MasVnrArea)] <- 0
+
+#impute 'None' for NA for BsmtQual
+ames1$BsmtQual[is.na(ames1$BsmtQual)] <- 'None'
+
+#impute 'None' for NA for BsmtCond
+ames1$BsmtCond[is.na(ames1$BsmtCond)] <- 'None'
+
+#impute 'None' for NA for BsmtExposure
+ames1$BsmtExposure[is.na(ames1$BsmtExposure)] <- 'None'
+
+#impute 'None' for NA for BsmtFinType1
+ames1$BsmtFinType1[is.na(ames1$BsmtFinType1)] <- 'None'
+
+#impute 'None' for NA for BsmtFinType2
+ames1$BsmtFinType2[is.na(ames1$BsmtFinType2)] <- 'None'
+                     
+#impute 'SBrkr' for NA in Electrical based on what every other house built in 2006 has
+ames1$Electrical[is.na(ames1$Electrical)] <- 'SBrkr'
+
+#impute 'None' for NA in FireplaceQu
+ames1$FireplaceQu[is.na(ames1$FireplaceQu)] <- 'None'
+                     
+#impute 'None' for NA for GarageType
+ames1$GarageType[is.na(ames1$GarageType)] <- 'None'
+
+#impute 0 for NA for Garage Year Built
+#ames1$GarageYrBlt <- as.character(ames1$GarageYrBlt)
+ames1$GarageYrBlt[is.na(ames1$GarageYrBlt)] <- 0
+
+#impute 'None' for NA for GarageFinish
+ames1$GarageFinish[is.na(ames1$GarageFinish)] <- 'None'
+
+#impute 'None' for NA for GarageQual
+ames1$GarageQual[is.na(ames1$GarageQual)] <- 'None'
+
+#impute 'None' for NA for GarageCond
+ames1$GarageCond[is.na(ames1$GarageCond)] <- 'None'
+
+#impute 'None' for NA for PoolQC
+ames1$PoolQC[is.na(ames1$PoolQC)] <- 'None'
+
+#impute 'None' for NA for Fence
+ames1$Fence[is.na(ames1$Fence)] <- 'None'
+                       
+#impute 'None' for NA for MiscFeature
+ames1$MiscFeature[is.na(ames1$MiscFeature)] <- 'None'       
+
+ames1.1 <- ames1
+```
+
+*Creating Dummy Values for Categorical Variables*
+
+```{r, message = F, warning = F}
+
+library(dummies)
+
+ames2 <- dummy.data.frame(ames1, names = c("MSZoning","Street","Alley","LotShape","LandContour","Utilities","LotConfig","LandSlope","Neighborhood","Condition1","Condition2","BldgType","HouseStyle","RoofStyle","RoofMatl","Exterior1st","Exterior2nd","MasVnrType","ExterQual","ExterCond","Foundation","BsmtQual","BsmtCond","BsmtExposure","BsmtFinType1","BsmtFinType2","Heating","HeatingQC","CentralAir","Electrical","KitchenQual","Functional","FireplaceQu","GarageType","GarageFinish","GarageQual","GarageCond","PavedDrive","PoolQC","Fence","MiscFeature","SaleType","SaleCondition"))
+
+#check dimensions
+dim(ames2)
+
+```
+
+This process took the data from 79 predictors to 302.
+
+*Scale the data*
+
+```{r}
+ames3 <- as.data.frame(scale(ames2))
+
+#test
+#head(ames2)
+#head(ames3)
+
+
+
+```
+
+*Perform PCA*
+The goal of PCA is to try to reduce the number of predictors down from 302.  I will create scree plots and then use Kaiser's rule to determine how many could be used.
+
+```{r}
+prc_ames <- prcomp(ames3)
+
+#look at a biplot
+biplot(prc_ames,scale=0)
+
+#screeplot
+screeplot(prc_ames,type='line')
+
+#Since this screeplot only shows 10 values and is still way above a variance of 1, I will construct some scree plots from scratch
+
+#fetch standard deviations
+std_dev <- prc_ames$sdev
+
+#calculate variances
+pr_var <- std_dev^2
+
+#create scree plot
+plot(pr_var, type="b")
+
+#proportion of variance (shows impact of each variable)
+prop_var <- pr_var/sum(pr_var)
+
+plot(prop_var, type="b")
+
+#cummulative view
+plot(cumsum(prop_var), type='b')
+
+#Kaiser's Rule - drop all variances >1.  Determine what that value is (from scree plot looks to be close to 100)
+pr_var[1:110]
+
+sum(prop_var[1:105])
+#Since 105 is the last value above 1
+
+```
+
+From the PCA it appears that the number of predictors could be reduced from 302 to 105, which would account for 77.2% of the variance.
+
+###*Calculus-Based Probability and Statistics*
+
+In order to calculate $\lambda$ I am using the fitdistr function to calculate probability density.  I think took the eigen values and randomly generated 1000 samples.  This created a histogram that skews to the right like the histogram of my original variable.  However the probability density function has no left tail.  When you increase the number of buckets the original variable looks more like a normal distrubution (if you exclude the large numbers of 0 for those that have no basements), while the pdf function definitely looks more like what I would expect to see from a count.
+
+```{r, warning= F, message = F}
+
+library(MASS)
+new_X <- X + 1
+
+pdf <- fitdistr(new_X, densfun="exponential")
+pdf
+
+estimate <- pdf$estimate
+
+set.seed(144)
+h <- rexp(1000, estimate)
+
+par(mfrow=c(2,2))
+hist(h, col = 'red')
+hist(X, col = 'blue')
+hist(h, col = 'red', breaks = 50)
+hist(X, col = 'blue', breaks = 50)
+
+```
+
+I calculated the 5th and 95th percentiles for both the randomly generated data and the actual data.  To begin with the randomly generated group (h) based on the eigen values, I needed to do some calculus.  Since the exponentional function is $\lambda$ * e^(-$\lambda$ * x), then the pdf is the integral of the function, which is 1 - e^(-$\lambda$ * x).  After taking the natural log of both sides and doing some algebra I am left with my value for a given percentile equal to -ln(1-percentile)/$_\lambda$
+
+```{r}
+
+#95th percentile
+(-log(1-0.95))/estimate
+
+#5th percentile
+(-log(1-0.05))/estimate
+
+
+
+
+
+```
+
+
+I then looked back at the empirical (original) data and compared the values generated by the pdf with the actual 5th and 95th percentiles.  The values derived from the pdf were directionally correct but were bigger (almost double) for the 95 percentile and much smaller (by approximately tenfold) for the 5th percentile.  This largely is due to the fact that the original data while still skewing to the right more resembles a normalized distribution (see the histogram of X above) than the data generated from the exponential distribution function.  I have used an ecdf function to plot both the original data and the generated as well.  Nevertheless the t-test between the two data sets show for a confidence interval of 95% a p-value >0.05 (0.1467) so I must accept the null hypothesis, meaning that the true difference in the means is the same.
+
+```{r}
+
+#percentiles
+e95 <- quantile(X, .95)
+e95
+
+e5 <- quantile(X,.05)
+e5
+
+par(mfrow=c(1,2))
+plot(ecdf(new_X), main = "ecdf for original data")
+plot(ecdf(h), main = "ecdf for pdf generated data")
+
+#confidence interval
+t.test(X,h)
+
+```
+
+###*Build a regression model*
+
+To predict the sales price I created a linear regression model.  I begin using a backward stepwise to reduce the predictors.  However, when I looked at the p-values some were still larger than 0.05.  So I eliminated the largest p-values one by one until all were statistically significant.
+
+```{r}
+#bring sales price back in
+SalePrice <- ames$SalePrice
+ames4 <- cbind(SalePrice,ames2)
+```
+
+
+```{r, echo=F, warning=F, eval=F}
+
+model <- lm(SalePrice~., data=ames4)
+summary(model)
+
+
+aicmodel <- stepAIC(model, direction = "backward")
+ # - YearRemodAdd
+model2 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LotConfigFR2 + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + RoofStyleFlat + RoofStyleGambrel + `RoofMatlTar&Grv` + RoofStyleHip + RoofStyleMansard + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + ElectricalMix + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeCWD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model2)
+
+#-RoofStyle Flat
+model3 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LotConfigFR2 + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + RoofStyleGambrel + `RoofMatlTar&Grv` + RoofStyleHip + RoofStyleMansard + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + ElectricalMix + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeCWD + SaleTypeNew + SaleConditionNormal, data = ames4)
+summary(model3)
+
+#- Roofstyle Hip
+model4 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LotConfigFR2 + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + RoofStyleGambrel + `RoofMatlTar&Grv` + RoofStyleMansard + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + ElectricalMix + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeCWD + SaleTypeNew + SaleConditionNormal, data = ames4)
+summary(model4)
+
+# - Roof Style Mansard
+model5 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LotConfigFR2 + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + RoofStyleGambrel + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + ElectricalMix + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeCWD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model5)
+
+# - Roof Style Gambrel
+model6 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LotConfigFR2 + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + ElectricalMix + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeCWD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model6)
+
+# - Lot Config FR2
+model7 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + ElectricalMix + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeCWD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model7)
+
+# - Sale Type CWD
+model8 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + ElectricalMix + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model8)
+
+# - Electrical Mix
+model9 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + ExterCondGd + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model9)
+
+#  -Exterior Cond Good
+model10 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + Exterior1stMetalSd + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model10)
+
+#  -Exterior 1st Metal Sd
+model11 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationSlab + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model11)
+
+#  -Foundation Slab
+model12 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + FoundationBrkTil + FoundationCBlock + FoundationPConc + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model12)
+
+#  -Foundation Brick Tile
+model13 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + FoundationCBlock + FoundationPConc + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model13)
+
+#  -Foundation C Block
+model14 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + FoundationPConc + FoundationStone + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model14)
+
+#  -Foundation Stone
+model15 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + FoundationPConc + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model15)
+
+
+#  -Foundation PC Conc
+model16 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + HouseStyle2Story + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model16)
+
+#  - House Style 2 story
+model17 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + HouseStyle2.5Fin + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model17)
+
+#  - House Style 2.5 fin
+model18 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtCondPo + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model18)
+
+#  - Basement Cond Poor
+model19 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + Condition2RRAe + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model19)
+
+
+#  -Condition2RRAe
+model20 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + MSZoningRL + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model20)
+
+#  -MSZoningRL
+model21 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2BLQ + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model21)
+
+#  -BsmtFinType2BLQ
+model22 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinType2LwQ + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model22)
+
+
+#  -BsmtFinType2LwQ
+model23 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMaj2 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model23)
+
+
+
+#  -FunctionalMaj2
+model24 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeCon + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model24)
+
+#  -SaleTypeCon
+model25 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + UtilitiesAllPub + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model25)
+
+#  -Utilities All Pub
+model26 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeConLD + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model26)
+
+# Sale Type ConLD
+model27 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model27)
+
+#All p values are below 0.05 now
+
+#boxcox(ames4$SalePrice~ames4$LotArea)
+```
+
+```{r, warning=F}
+model27 <- lm(SalePrice~MSSubClass+`MSZoningC (all)` + MSZoningFV + LotArea + StreetGrvl + LandContourBnk + LandContourLow + LotConfigCulDSac + LandSlopeGtl + LandSlopeMod + NeighborhoodCrawfor + NeighborhoodEdwards + NeighborhoodMitchel + NeighborhoodNAmes + NeighborhoodNoRidge + NeighborhoodNridgHt + NeighborhoodNWAmes + NeighborhoodOldTown + NeighborhoodStoneBr + Condition1Artery + Condition1Feedr + Condition1RRAe + Condition2PosA + Condition2PosN + BldgType2fmCon + OverallQual + OverallCond + YearBuilt + `RoofMatlTar&Grv` + RoofMatlClyTile + RoofMatlCompShg + RoofMatlWdShake + Exterior1stBrkFace + MasVnrTypeBrkFace + MasVnrArea + ExterQualEx + ExterQualFa + BsmtQualEx + BsmtQualNone + BsmtExposureAv + BsmtExposureGd + BsmtFinType1GLQ + BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF + HeatingOthW + HeatingQCEx + X1stFlrSF + X2ndFlrSF + BedroomAbvGr + KitchenAbvGr + KitchenQualEx + TotRmsAbvGrd + FunctionalMaj1 + FunctionalMin1 + FunctionalMin2 + FunctionalMod + FunctionalSev + Fireplaces + FireplaceQuNone + GarageYrBlt + GarageCars + GarageArea + GarageQualEx + GarageCondEx + WoodDeckSF + ScreenPorch + PoolArea + PoolQCEx + PoolQCFa + PoolQCGd + FenceGdPrv + SaleTypeNew + SaleConditionNormal, data = ames4)
+
+summary(model27)
+
+#All p values are below 0.05 now
+```
+
+Now evaluate with the test data
+
+```{r}
+ames_test <- read.csv("C:/Users/jenieman/Documents/CUNY/Data 605/Final/test.csv", stringsAsFactors = F)
+
+#Follow same process
+#take out index and sale price (the variable we are predicting)
+ames1_test <- ames_test[,-1]
+
+#fix data by imputing median for NA for lot frontage
+ames1_test$LotFrontage[is.na(ames1_test$LotFrontage)] <- median(ames1$LotFrontage, na.rm=T)
+
+#impute 'None' for NA in Alley
+ames1_test$Alley[is.na(ames1_test$Alley)] <- 'None'
+
+#impute 'None' for NA for MasVnrType
+ames1_test$MasVnrType[is.na(ames1_test$MasVnrType)] <- 'None'
+
+#impute 0 for NA for MasVnrArea
+ames1_test$MasVnrArea[is.na(ames1_test$MasVnrArea)] <- 0
+
+#impute 'None' for NA for BsmtQual
+ames1_test$BsmtQual[is.na(ames1_test$BsmtQual)] <- 'None'
+
+#impute 'None' for NA for BsmtCond
+ames1_test$BsmtCond[is.na(ames1_test$BsmtCond)] <- 'None'
+
+#impute 'None' for NA for BsmtExposure
+ames1_test$BsmtExposure[is.na(ames1_test$BsmtExposure)] <- 'None'
+
+#impute 'None' for NA for BsmtFinType1
+ames1_test$BsmtFinType1[is.na(ames1_test$BsmtFinType1)] <- 'None'
+
+#impute 'None' for NA for BsmtFinType2
+ames1_test$BsmtFinType2[is.na(ames1_test$BsmtFinType2)] <- 'None'
+                     
+#impute 'SBrkr' for NA in Electrical based on what every other house built in 2006 has
+ames1_test$Electrical[is.na(ames1_test$Electrical)] <- 'SBrkr'
+
+#impute 'None' for NA in FireplaceQu
+ames1_test$FireplaceQu[is.na(ames1_test$FireplaceQu)] <- 'None'
+                     
+#impute 'None' for NA for GarageType
+ames1_test$GarageType[is.na(ames1_test$GarageType)] <- 'None'
+
+#impute 0 for NA for Garage Year Built
+#ames1$GarageYrBlt <- as.character(ames1$GarageYrBlt)
+ames1_test$GarageYrBlt[is.na(ames1_test$GarageYrBlt)] <- 0
+
+#impute 'None' for NA for GarageFinish
+ames1_test$GarageFinish[is.na(ames1_test$GarageFinish)] <- 'None'
+
+#impute 'None' for NA for GarageQual
+ames1_test$GarageQual[is.na(ames1_test$GarageQual)] <- 'None'
+
+#impute 'None' for NA for GarageCond
+ames1_test$GarageCond[is.na(ames1_test$GarageCond)] <- 'None'
+
+#impute 'None' for NA for PoolQC
+ames1_test$PoolQC[is.na(ames1_test$PoolQC)] <- 'None'
+
+#impute 'None' for NA for Fence
+ames1_test$Fence[is.na(ames1_test$Fence)] <- 'None'
+                       
+#impute 'None' for NA for MiscFeature
+ames1_test$MiscFeature[is.na(ames1_test$MiscFeature)] <- 'None'     
+
+#impute 0 for NA for Garage Cars
+ames1_test$GarageCars[is.na(ames1_test$GarageCars)] <- 0
+
+#impute 0 for NA for Garage Area
+ames1_test$GarageArea[is.na(ames1_test$GarageArea)] <- 0
+
+#impute 0 for NA for BsmtFull Bath
+ames1_test$BsmtFullBath[is.na(ames1_test$BsmtFullBath)]<- 0
+
+#impute 0 for NA for BsmtHalfBath
+ames1_test$BsmtHalfBath[is.na(ames1_test$BsmtHalfBath)]<- 0
+
+#impute 0 for NA for BsmtFinSF2
+ames1_test$BsmtFinSF2[is.na(ames1_test$BsmtFinSF2)]<- 0
+
+#impute 0 for NA for BsmtUnfSF
+ames1_test$BsmtUnfSF[is.na(ames1_test$BsmtUnfSF)]<- 0
+
+#impute 0 for NA for TotalBsmtSF
+ames1_test$TotalBsmtSF[is.na(ames1_test$TotalBsmtSF)]<- 0
+
+#impute 0 for NA for BsmtFinSF1
+ames1_test$BsmtFinSF1[is.na(ames1_test$BsmtFinSF1)]<- 0
+
+ames1.1_test <- ames1_test
+
+ames2_test <- dummy.data.frame(ames1_test, names = c("MSZoning","Street","Alley","LotShape","LandContour","Utilities","LotConfig","LandSlope","Neighborhood","Condition1","Condition2","BldgType","HouseStyle","RoofStyle","RoofMatl","Exterior1st","Exterior2nd","MasVnrType","ExterQual","ExterCond","Foundation","BsmtQual","BsmtCond","BsmtExposure","BsmtFinType1","BsmtFinType2","Heating","HeatingQC","CentralAir","Electrical","KitchenQual","Functional","FireplaceQu","GarageType","GarageFinish","GarageQual","GarageCond","PavedDrive","PoolQC","Fence","MiscFeature","SaleType","SaleCondition"))
+
+# add in 0 values
+ames2_test$RoofMatlClyTile <- 0
+ames2_test$HeatingOthW <- 0
+ames2_test$GarageQualEx <- 0
+ames2_test$PoolQCFa <- 0
+
+test_results <- predict(model27, newdata=ames2_test, type="response")
+id <- c(1461:2919)
+test_results1 <- cbind(id,test_results)
+head(test_results1)
+colnames(test_results1) <- c("id", "SalePrice")
+write.csv(test_results1,"C:/Users/jenieman/Documents/CUNY/Data 605/Final/results.csv")
+
+```
+
+Compare predictive results for test data to actual training data.  The graphs below show that the overall distribution of the predicted sales price from the test data is very similar to the distribution to the actual sales price in the training data.
+
+```{r}
+#Test data predictions
+summary(test_results)
+#Real data
+summary(SalePrice)
+
+par(mfrow=c(2,2))
+hist(test_results, col='yellow', main="Distribution of Predicted Test Data Sale Price")
+hist(ames$SalePrice, col='yellow', main="Distribution of Training Sale Price")
+boxplot(test_results, col='blue',main="Predicted Test Data Sale Price")
+boxplot(ames$SalePrice, col='blue',main="Training Sale Price")
+
+
+
+```
+
+I submitted my results to Kaggle (user name Jeff Nieman).  My submission was ranked 2332/2668.  I think to improve would involve some Box Cox analysis to transform variables or more likely use of techniques like Random Forest.
